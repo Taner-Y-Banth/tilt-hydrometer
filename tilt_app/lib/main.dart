@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
-import 'pages/data_page.dart';
-import 'pages/logging.dart';
-import 'pages/settings_page.dart';
-import 'services/data_service.dart';
+import 'package:tilt_app/pages/data_page.dart';
+import 'package:tilt_app/pages/logging.dart';
+import 'package:tilt_app/pages/settings_page.dart';
+import 'package:tilt_app/services/data_service.dart';
+import 'package:provider/provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => DataService(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +34,7 @@ class MyApp extends StatelessWidget {
 class MyHomePage extends StatefulWidget {
   final String title;
 
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({Key? key, required this.title}) : super(key: key);
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -45,10 +51,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final dataService = Provider.of<DataService>(context, listen: false);
     final List<Widget> _pages = <Widget>[
       const DataPage(),
-      const LoggingPage(),
-      const SettingsPage(beacons: {}),
+      LoggingPage(dataService: dataService),
+      SettingsPage(dataService: dataService),
     ];
 
     return Scaffold(

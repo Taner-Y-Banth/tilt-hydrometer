@@ -3,53 +3,128 @@ import 'package:flutter/material.dart';
 import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:tilt_app/services/data_service.dart';
+import 'package:open_filex/open_filex.dart'; // Import open_filex
 
 class LoggingPage extends StatefulWidget {
-  const LoggingPage({super.key});
+  final DataService dataService;
+
+  const LoggingPage({Key? key, required this.dataService}) : super(key: key);
 
   @override
-  State<LoggingPage> createState() => _LoggingPageState();
+  _LoggingPageState createState() => _LoggingPageState();
 }
 
 class _LoggingPageState extends State<LoggingPage> {
-  bool _isLogging = false;
+  String? _selectedMacAddress;
   Timer? _loggingTimer;
-  List<List<dynamic>> _csvData = [];
+  List<List<dynamic>> _logData = [];
+  List<String> _logFiles = [];
+  bool _isLogging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogFiles();
+  }
+
+  @override
+  void dispose() {
+    _stopLogging();
+    super.dispose();
+  }
+
+  Future<void> _loadLogFiles() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final files = directory.listSync();
+    _logFiles = files
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.csv'))
+        .map((file) => file.uri.pathSegments.last)
+        .toList();
+    setState(() {});
+  }
 
   void _startLogging() {
-    setState(() {
-      _isLogging = true;
-    });
+    if (_isLogging || _selectedMacAddress == null) return;
+    _isLogging = true;
+    _logData.clear();
+    _startLoggingTimer();
+    setState(() {});
+  }
 
-    _loggingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      final now = DateTime.now();
-      // Simulate logging data
-      _csvData.add([
-        now.toIso8601String(),
-        'Sample MAC Address',
-        'Sample Gravity',
-        'Sample Temperature',
-      ]);
+  void _startLoggingTimer() {
+    _loggingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_selectedMacAddress != null) {
+        //  CORRECT WAY TO GET BEACON DATA
+        widget.dataService.beaconsStream.listen((beacons) {
+          final beaconData = beacons.firstWhere(
+            (beacon) => beacon['macAddress'] == _selectedMacAddress,
+            orElse: () => {},
+          );
+          if (beaconData.isNotEmpty) {
+            _logData.add([
+              DateTime.now().toIso8601String(),
+              beaconData['gravity'] ?? 0.0,
+              beaconData['temperature'] ?? 0.0,
+              beaconData['rssi'] ?? 0,
+              beaconData['distance'] ?? 0.0,
+            ]);
+            if (mounted) {
+              // Check if widget is still in the tree
+              setState(() {});
+            }
+          }
+        });
+      }
     });
   }
 
-  Future<void> _stopLogging() async {
-    setState(() {
-      _isLogging = false;
-    });
-
+  void _stopLogging() async {
+    if (!_isLogging) return;
+    _isLogging = false;
     _loggingTimer?.cancel();
     _loggingTimer = null;
 
-    final directory = await getApplicationDocumentsDirectory();
-    final path = '${directory.path}/tilt_data.csv';
-    final file = File(path);
-    final csv = const ListToCsvConverter().convert(_csvData);
-    await file.writeAsString(csv);
+    if (_logData.isNotEmpty) {
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'tilt_data_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final path = '${directory.path}/$fileName';
+      final file = File(path);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Data logged to $path')),
-    );
+      try {
+        // Ensure all rows have consistent column counts
+        final sanitizedData = _logData.map((row) {
+          return row.map((cell) => cell.toString()).toList();
+        }).toList();
+
+        final csv = const ListToCsvConverter().convert(sanitizedData);
+        await file.writeAsString(csv);
+        _logFiles.add(fileName);
+        if (mounted) {
+          setState(() {});
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Log saved as $fileName')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving log file: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openFile(String fileName) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final path = '${directory.path}/$fileName';
+    final result =
+        await OpenFilex.open(path, type: 'text/csv'); // Explicit MIME type
+    if (result.type != ResultType.done) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening file: ${result.message}')),
+      );
+    }
   }
 
   @override
@@ -57,17 +132,98 @@ class _LoggingPageState extends State<LoggingPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Logging Page'),
-        actions: [
-          IconButton(
-            icon: Icon(_isLogging ? Icons.stop : Icons.play_arrow),
-            onPressed: _isLogging ? _stopLogging : _startLogging,
+      ),
+      body: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: _isLogging || _selectedMacAddress == null
+                    ? null
+                    : _startLogging,
+                child: const Text('Start Logging'),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                onPressed: _isLogging ? _stopLogging : null,
+                child: const Text('Stop Logging'),
+              ),
+            ],
+          ),
+          const Divider(),
+          const Text('Log Files:'),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _logFiles.length,
+              itemBuilder: (context, index) {
+                final fileName = _logFiles[index];
+                return ListTile(
+                  title: Text(fileName),
+                  onTap: () async {
+                    await _openFile(fileName);
+                  },
+                );
+              },
+            ),
+          ),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: widget.dataService.beaconsStream,
+            initialData: const [],
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const CircularProgressIndicator();
+              }
+
+              final beacons = snapshot.data!;
+
+              // Ensure selected value is valid
+              if (_selectedMacAddress != null &&
+                  !beacons.any((beacon) =>
+                      beacon['macAddress'] == _selectedMacAddress)) {
+                _selectedMacAddress = null;
+              }
+
+              return DropdownButton<String>(
+                value: _selectedMacAddress,
+                hint: const Text('Select Tilt to Log'),
+                items: beacons.map((beacon) {
+                  return DropdownMenuItem<String>(
+                    value: beacon['macAddress'],
+                    child: Text(
+                      '${beacon['color']} - ${beacon['macAddress'].substring(9)}',
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedMacAddress = value;
+                    _logData.clear();
+                    _stopLogging();
+                    if (value != null) {
+                      _startLogging();
+                    }
+                  });
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _logData.length,
+              itemBuilder: (context, index) {
+                final data = _logData[index];
+                return ListTile(
+                  title: Text('Time: ${data[0]}'),
+                  subtitle: Text(
+                    'Gravity: ${data[1]}, Temperature: ${data[2]}, RSSI: ${data[3]}, Distance: ${data[4]}',
+                  ),
+                );
+              },
+            ),
           ),
         ],
-      ),
-      body: Center(
-        child: _isLogging
-            ? const Text('Logging in progress...')
-            : const Text('Press the play button to start logging.'),
       ),
     );
   }

@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-class DataService {
+class DataService extends ChangeNotifier {
   final StreamController<List<Map<String, dynamic>>> _beaconsController =
-      StreamController.broadcast(); // Stream of List instead of Map
+      StreamController.broadcast();
   final Map<String, Map<String, dynamic>> _beacons = {};
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   Timer? _scanTimer;
+  final List<List<dynamic>> _logData = [];
+  String? _loggingMacAddress;
+  Timer? _loggingTimer;
 
   final Map<String, String> tiltColors = {
     'a495bb10': 'Red',
@@ -22,7 +26,11 @@ class DataService {
   };
 
   Stream<List<Map<String, dynamic>>> get beaconsStream =>
-      _beaconsController.stream; // Stream of List
+      _beaconsController.stream;
+
+  List<List<dynamic>> get logData => _logData;
+
+  String? get loggingMacAddress => _loggingMacAddress;
 
   DataService() {
     _init();
@@ -48,6 +56,7 @@ class DataService {
     _scanSubscription?.cancel();
     _scanTimer?.cancel();
     FlutterBluePlus.stopScan();
+    stopLogging();
   }
 
   Future<void> _startScan() async {
@@ -70,7 +79,8 @@ class DataService {
   }
 
   void _processScanResults(List<ScanResult> results) {
-    final Map<String, Map<String, dynamic>> updatedBeacons = {};
+    final Map<String, Map<String, dynamic>> updatedBeacons =
+        {}; // Temporary map
     final DateTime now = DateTime.now();
 
     for (ScanResult result in results) {
@@ -112,20 +122,28 @@ class DataService {
       }
     }
 
-    // Remove outdated beacons and sort
-    final List<Map<String, dynamic>> sortedBeacons = updatedBeacons.values
-        .where((beacon) =>
-            now.difference(beacon['timestamp'] as DateTime).inSeconds <= 15)
-        .toList()
+    // Update existing beacons with new data, keep existing if not updated
+    updatedBeacons.forEach((key, value) {
+      if (_beacons.containsKey(key)) {
+        _beacons[key]!.addAll(value); // Update existing data
+      } else {
+        _beacons[key] = value; // Add new beacon
+      }
+    });
+
+    // Remove outdated beacons (older than 15 seconds)
+    _beacons.removeWhere((key, beacon) =>
+        now.difference(beacon['timestamp'] as DateTime).inSeconds > 15);
+
+    // Prepare sorted list for UI
+    final List<Map<String, dynamic>> sortedBeacons = _beacons.values.toList()
       ..sort((a, b) => tiltColors.keys
           .toList()
           .indexOf(a['color'])
           .compareTo(tiltColors.keys.toList().indexOf(b['color'])));
 
-    _beacons.clear();
-    _beacons.addAll(updatedBeacons);
-    _beaconsController.add(sortedBeacons); // Stream the sorted list
-
+    _beaconsController.add(sortedBeacons);
+    notifyListeners();
     print('DataService: Beacons updated: ${_beacons.length}');
   }
 
@@ -137,29 +155,66 @@ class DataService {
         : (0.89976) * pow(ratio, 7.7095) + 0.111;
   }
 
+  // --- Logging Functionality ---
+
+  void startLogging(String macAddress) {
+    _loggingMacAddress = macAddress;
+    _logData.clear();
+    _loggingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _logDataPoint(macAddress);
+    });
+    notifyListeners();
+  }
+
+  void stopLogging() {
+    _loggingTimer?.cancel();
+    _loggingMacAddress = null;
+    notifyListeners();
+  }
+
+  void _logDataPoint(String macAddress) {
+    if (_beacons.containsKey(macAddress)) {
+      final beacon = _beacons[macAddress]!;
+      final now = DateTime.now();
+      _logData.add([
+        now.toIso8601String(),
+        beacon['gravity'],
+        beacon['temperature'],
+        beacon['rssi'],
+        beacon['distance'],
+      ]);
+      notifyListeners();
+    }
+  }
+
+  @override
   void dispose() {
     print('DataService: Disposing...');
     _scanSubscription?.cancel();
     _scanTimer?.cancel();
+    _loggingTimer?.cancel();
     _beaconsController.close();
+    super.dispose();
   }
-}
 
-Future<void> requestPermissions() async {
-  print('DataService: Requesting permissions...');
-  Map<Permission, PermissionStatus> statuses = await [
-    Permission.bluetooth,
-    Permission.bluetoothScan,
-    Permission.bluetoothConnect,
-    Permission.locationWhenInUse,
-  ].request();
+  Future<void> requestPermissions() async {
+    print('DataService: Requesting permissions...');
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+      Permission.storage,
+    ].request();
 
-  if (statuses[Permission.bluetooth]!.isGranted &&
-      statuses[Permission.bluetoothScan]!.isGranted &&
-      statuses[Permission.bluetoothConnect]!.isGranted &&
-      statuses[Permission.locationWhenInUse]!.isGranted) {
-    print('DataService: All permissions granted.');
-  } else {
-    print('DataService: Some permissions not granted: $statuses');
+    if (statuses[Permission.bluetooth]!.isGranted &&
+        statuses[Permission.bluetoothScan]!.isGranted &&
+        statuses[Permission.bluetoothConnect]!.isGranted &&
+        statuses[Permission.locationWhenInUse]!.isGranted &&
+        statuses[Permission.storage]!.isGranted) {
+      print('DataService: All permissions granted.');
+    } else {
+      print('DataService: Some permissions not granted: $statuses');
+    }
   }
 }
