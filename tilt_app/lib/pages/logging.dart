@@ -54,28 +54,59 @@ class _LoggingPageState extends State<LoggingPage> {
   }
 
   void _startLoggingTimer() {
-    _loggingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _loggingTimer = Timer.periodic(const Duration(minutes: 1), (timer) async {
       if (_selectedMacAddress != null) {
-        //  CORRECT WAY TO GET BEACON DATA
-        widget.dataService.beaconsStream.listen((beacons) {
-          final beaconData = beacons.firstWhere(
-            (beacon) => beacon['macAddress'] == _selectedMacAddress,
-            orElse: () => {},
-          );
-          if (beaconData.isNotEmpty) {
-            _logData.add([
-              DateTime.now().toIso8601String(),
-              beaconData['gravity'] ?? 0.0,
-              beaconData['temperature'] ?? 0.0,
-              beaconData['rssi'] ?? 0,
-              beaconData['distance'] ?? 0.0,
-            ]);
-            if (mounted) {
-              // Check if widget is still in the tree
-              setState(() {});
+        final List<Map<String, dynamic>> samples = [];
+        final stream = widget.dataService.beaconsStream;
+
+        // Take exactly 5 samples
+        final subscription = stream.listen((beacons) {
+          if (samples.length < 5) {
+            final beaconData = beacons.firstWhere(
+              (beacon) => beacon['macAddress'] == _selectedMacAddress,
+              orElse: () => {},
+            );
+            if (beaconData.isNotEmpty) {
+              samples.add(beaconData);
             }
           }
         });
+
+        await Future.delayed(const Duration(seconds: 5));
+        await subscription.cancel();
+
+        if (samples.isNotEmpty) {
+          // Calculate averages
+          final avgGravity = samples
+                  .map((sample) => sample['gravity'] ?? 0.0)
+                  .reduce((a, b) => a + b) /
+              samples.length;
+          final avgTemperature = samples
+                  .map((sample) => sample['temperature'] ?? 0.0)
+                  .reduce((a, b) => a + b) /
+              samples.length;
+          final avgRssi = samples
+                  .map((sample) => sample['rssi'] ?? 0)
+                  .reduce((a, b) => a + b) /
+              samples.length;
+          final avgDistance = samples
+                  .map((sample) => double.tryParse(sample['distance']) ?? 0.0)
+                  .reduce((a, b) => a + b) /
+              samples.length;
+
+          // Log the averaged data
+          _logData.add([
+            DateTime.now().toIso8601String(),
+            avgGravity.toStringAsFixed(4),
+            avgTemperature.toStringAsFixed(1),
+            avgRssi.toInt(),
+            avgDistance.toStringAsFixed(2),
+          ]);
+
+          if (mounted) {
+            setState(() {}); // Update UI if widget is still in the tree
+          }
+        }
       }
     });
   }
@@ -199,10 +230,7 @@ class _LoggingPageState extends State<LoggingPage> {
                   setState(() {
                     _selectedMacAddress = value;
                     _logData.clear();
-                    _stopLogging();
-                    if (value != null) {
-                      _startLogging();
-                    }
+                    _stopLogging(); // Ensure logging stops when a new device is selected
                   });
                 },
               );

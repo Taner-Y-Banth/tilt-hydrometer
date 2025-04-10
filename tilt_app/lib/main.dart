@@ -55,7 +55,8 @@ class _MyHomePageState extends State<MyHomePage> {
     final List<Widget> _pages = <Widget>[
       const DataPage(),
       LoggingPage(dataService: dataService),
-      SettingsPage(dataService: dataService),
+      SettingsPage(
+          dataService: dataService), // Pass dataService to SettingsPage
     ];
 
     return Scaffold(

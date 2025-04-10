@@ -1,25 +1,46 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 
 class SettingsService {
-  static const String _settingsKey = 'device_settings';
-
-  Future<void> saveSettings(Map<String, dynamic> settings) async {
+  Future<List<Map<String, String>>> getSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final settingsList = await getSettings();
-    settingsList.removeWhere((s) => s['macAddress'] == settings['macAddress']);
-    settingsList.add(settings);
-    final settingsJson = jsonEncode(settingsList);
-    await prefs.setString(_settingsKey, settingsJson);
+    final settingsList = prefs.getStringList('settings') ?? [];
+    return settingsList
+        .map((s) => Map<String, String>.from(_decode(s)))
+        .toList();
   }
 
-  Future<List<Map<String, dynamic>>> getSettings() async {
+  Future<void> saveSettings(Map<String, String> settings) async {
     final prefs = await SharedPreferences.getInstance();
-    final settingsJson = prefs.getString(_settingsKey);
-    if (settingsJson == null) {
-      return [];
-    }
-    final settingsList = jsonDecode(settingsJson) as List;
-    return settingsList.cast<Map<String, dynamic>>();
+    final settingsList = prefs.getStringList('settings') ?? [];
+    settingsList.clear();
+    settingsList.add(_encode(settings));
+    await prefs.setStringList('settings', settingsList);
+  }
+
+  Future<Map<String, String>?> getTiltSettings(String macAddress) async {
+    final prefs = await SharedPreferences.getInstance();
+    final tiltSettings = prefs.getString('tilt_settings_$macAddress');
+    return tiltSettings != null
+        ? Map<String, String>.from(_decode(tiltSettings))
+        : null;
+  }
+
+  Future<void> saveTiltSettings(
+      String macAddress, Map<String, String> settings) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tilt_settings_$macAddress', _encode(settings));
+  }
+
+  String _encode(Map<String, String> map) {
+    return map.entries.map((e) => '${e.key}=${e.value}').join(';');
+  }
+
+  Map<String, String> _decode(String encoded) {
+    return Map.fromEntries(
+      encoded.split(';').map((entry) {
+        final parts = entry.split('=');
+        return MapEntry(parts[0], parts.length > 1 ? parts[1] : '');
+      }),
+    );
   }
 }

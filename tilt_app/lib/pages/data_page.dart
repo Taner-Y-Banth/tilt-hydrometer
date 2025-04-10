@@ -5,6 +5,16 @@ import 'package:tilt_app/services/data_service.dart'; // Import DataService
 class DataPage extends StatelessWidget {
   const DataPage({Key? key}) : super(key: key);
 
+  String _formatGravity(dynamic gravity, bool isTiltPro) {
+    final double parsedGravity = gravity is String
+        ? double.tryParse(gravity) ?? 0.0
+        : gravity is double
+            ? gravity
+            : gravity.toDouble(); // Ensure gravity is a double
+    final precision = isTiltPro ? 4 : 3; // Use 4 decimals for Tilt Pro
+    return parsedGravity.toStringAsFixed(precision);
+  }
+
   @override
   Widget build(BuildContext context) {
     final dataService = Provider.of<DataService>(context); // Get DataService
@@ -29,13 +39,14 @@ class DataPage extends StatelessWidget {
               final beacon = sortedBeacons[index];
               final String colorName = beacon['color'];
               final Color cardColor = getColorFromName(colorName);
+              final isTiltPro = beacon['isTiltPro'] ?? false;
 
               return Card(
                 margin: const EdgeInsets.all(8),
                 color: cardColor,
                 child: ListTile(
                   title: Text(
-                    beacon['isTiltPro'] == true
+                    isTiltPro
                         ? 'Tilt Pro ${beacon['color']}'
                         : 'Tilt ${beacon['color']}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
@@ -45,8 +56,10 @@ class DataPage extends StatelessWidget {
                     children: [
                       Text('MAC Address: ${beacon['macAddress']}'),
                       Text('UUID: ${beacon['uuid']}'),
-                      Text('Gravity: ${beacon['gravity']}'),
-                      Text('Temperature: ${beacon['temperature']}'),
+                      Text(
+                          'Gravity: ${_formatGravity(beacon['convertedGravity'], isTiltPro)} (${beacon['gravityUnit']})'),
+                      Text(
+                          'Temperature: ${beacon['convertedTemperature'].toStringAsFixed(1)} (${beacon['temperatureUnit']})'),
                       Text('RSSI: ${beacon['rssi']}'),
                       Text('Distance: ${beacon['distance']} meters'),
                     ],

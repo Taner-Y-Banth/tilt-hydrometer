@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<string>com.example.tilt_app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -45,5 +45,17 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>CFBundleIcons</key>
+	<dict>
+	    <key>CFBundlePrimaryIcon</key>
+	    <dict>
+	        <key>CFBundleIconFiles</key>
+	        <array>
+	            <string>AppIcon</string> <!-- Ensure this matches the generated icon set -->
+	        </array>
+	        <key>UIPrerenderedIcon</key>
+	        <false/>
+	    </dict>
+	</dict>
 </dict>
 </plist>

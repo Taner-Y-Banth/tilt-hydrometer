@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:tilt_app/services/settings_service.dart'; // Import SettingsService
 
 class DataService extends ChangeNotifier {
   final StreamController<List<Map<String, dynamic>>> _beaconsController =
@@ -13,6 +14,11 @@ class DataService extends ChangeNotifier {
   final List<List<dynamic>> _logData = [];
   String? _loggingMacAddress;
   Timer? _loggingTimer;
+
+  final SettingsService _settingsService =
+      SettingsService(); // Add SettingsService instance
+  final Map<String, Map<String, String>> _tiltSettingsCache =
+      {}; // Cache for Tilt-specific settings
 
   final Map<String, String> tiltColors = {
     'a495bb10': 'Red',
@@ -78,9 +84,22 @@ class DataService extends ChangeNotifier {
     }
   }
 
-  void _processScanResults(List<ScanResult> results) {
-    final Map<String, Map<String, dynamic>> updatedBeacons =
-        {}; // Temporary map
+  Future<void> _loadTiltSettings(String macAddress) async {
+    if (!_tiltSettingsCache.containsKey(macAddress)) {
+      final settings = await _settingsService.getTiltSettings(macAddress);
+      _tiltSettingsCache[macAddress] = settings ?? {};
+    }
+  }
+
+  Future<void> updateTiltSettings(
+      String macAddress, Map<String, String> settings) async {
+    await _settingsService.saveTiltSettings(macAddress, settings);
+    _tiltSettingsCache
+        .remove(macAddress); // Clear cached settings to force reload
+  }
+
+  void _processScanResults(List<ScanResult> results) async {
+    final Map<String, Map<String, dynamic>> updatedBeacons = {};
     final DateTime now = DateTime.now();
 
     for (ScanResult result in results) {
@@ -105,35 +124,67 @@ class DataService extends ChangeNotifier {
           if (color != "Unknown") {
             final String macAddress = result.device.id.toString();
 
+            // Load settings for this Tilt device
+            await _loadTiltSettings(macAddress);
+            final settings = _tiltSettingsCache[macAddress] ?? {};
+
+            // Apply calibration if available
+            final double gravity = isTiltPro ? minor / 10000.0 : minor / 1000.0;
+            final double temperature =
+                isTiltPro ? major / 10.0 : major.toDouble();
+            final double calibratedGravity = gravity +
+                (double.tryParse(settings['calibrationSG'] ?? '0') ?? 0);
+            final double calibratedTemperature = temperature +
+                (double.tryParse(settings['calibrationTemperature'] ?? '0') ??
+                    0);
+
+            // Convert calibrated values based on selected units
+            final String gravityUnit = settings['gravityUnit'] ?? 'SG';
+            final String temperatureUnit =
+                settings['temperatureUnit'] ?? 'Fahrenheit';
+            final double convertedGravity =
+                _convertGravity(calibratedGravity, gravityUnit);
+            final double convertedTemperature =
+                _convertTemperature(calibratedTemperature, temperatureUnit);
+
             updatedBeacons[macAddress] = {
               'uuid': uuid,
               'color': color,
               'macAddress': macAddress,
-              'gravity': isTiltPro ? minor / 10000.0 : minor / 1000.0,
-              'temperature': isTiltPro ? major / 10.0 : major,
+              'gravity': gravity,
+              'calibratedGravity': calibratedGravity,
+              'convertedGravity': convertedGravity,
+              'temperature': temperature,
+              'calibratedTemperature': calibratedTemperature,
+              'convertedTemperature': convertedTemperature,
               'rssi': result.rssi,
               'txPower': txPower,
               'distance': distance.toStringAsFixed(2),
               'isTiltPro': isTiltPro,
               'timestamp': now,
+              'gravityUnit': gravityUnit,
+              'temperatureUnit': temperatureUnit,
             };
           }
         }
       }
     }
 
-    // Update existing beacons with new data, keep existing if not updated
-    updatedBeacons.forEach((key, value) {
-      if (_beacons.containsKey(key)) {
-        _beacons[key]!.addAll(value); // Update existing data
-      } else {
-        _beacons[key] = value; // Add new beacon
+    // Update existing beacons with new data or mark as outdated
+    _beacons.forEach((key, beacon) {
+      if (!updatedBeacons.containsKey(key)) {
+        final lastSeen = beacon['timestamp'] as DateTime;
+        if (now.difference(lastSeen).inSeconds > 30) {
+          // Remove beacons not seen for more than 30 seconds
+          _beacons.remove(key);
+        }
       }
     });
 
-    // Remove outdated beacons (older than 15 seconds)
-    _beacons.removeWhere((key, beacon) =>
-        now.difference(beacon['timestamp'] as DateTime).inSeconds > 15);
+    // Add or update beacons
+    updatedBeacons.forEach((key, value) {
+      _beacons[key] = value;
+    });
 
     // Prepare sorted list for UI
     final List<Map<String, dynamic>> sortedBeacons = _beacons.values.toList()
@@ -155,9 +206,26 @@ class DataService extends ChangeNotifier {
         : (0.89976) * pow(ratio, 7.7095) + 0.111;
   }
 
+  double _convertGravity(double gravity, String unit) {
+    if (unit == 'Plato') {
+      return (-463.37 + (668.72 * gravity) - (205.35 * gravity * gravity));
+    }
+    return gravity; // Default to SG
+  }
+
+  double _convertTemperature(double temperature, String unit) {
+    if (unit == 'Celsius') {
+      return (temperature - 32) * 5 / 9;
+    }
+    return temperature; // Default to Fahrenheit
+  }
+
   // --- Logging Functionality ---
 
   void startLogging(String macAddress) {
+    if (_loggingMacAddress != null) {
+      stopLogging(); // Stop any ongoing logging before starting a new one
+    }
     _loggingMacAddress = macAddress;
     _logData.clear();
     _loggingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
