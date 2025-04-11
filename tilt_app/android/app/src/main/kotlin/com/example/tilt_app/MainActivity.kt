@@ -1,4 +1,4 @@
-package com.example.tilt_app
+package com.tilthydrometer.app
 
 import io.flutter.embedding.android.FlutterActivity
 

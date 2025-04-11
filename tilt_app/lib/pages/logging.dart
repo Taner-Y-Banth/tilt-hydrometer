@@ -102,7 +102,7 @@ class _LoggingPageState extends State<LoggingPage> {
               samples.length;
 
           // Update graph data
-          _updateGraphData(avgGravity); // Ensure graph is updated
+          _updateGraphData(avgGravity);
 
           // Log the averaged data
           final avgTemperature = samples
@@ -128,10 +128,6 @@ class _LoggingPageState extends State<LoggingPage> {
             avgRssi.toInt(),
             avgDistance.toStringAsFixed(2),
           ]);
-
-          if (mounted) {
-            setState(() {}); // Update UI if widget is still in the tree
-          }
         }
       }
     });

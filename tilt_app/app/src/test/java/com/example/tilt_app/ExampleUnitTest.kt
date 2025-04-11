@@ -1,4 +1,4 @@
-package com.example.tilt_app
+package com.tilthydrometer.app
 
 import org.junit.Test
 
