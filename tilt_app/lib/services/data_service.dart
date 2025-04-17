@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tilt_app/services/settings_service.dart'; // Import SettingsService
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPreferences
 
 class DataService extends ChangeNotifier {
   final StreamController<List<Map<String, dynamic>>> _beaconsController =
@@ -98,6 +99,24 @@ class DataService extends ChangeNotifier {
         .remove(macAddress); // Clear cached settings to force reload
   }
 
+  Future<void> resetTiltSettingsGlobally() async {
+    // Clear cached settings
+    _tiltSettingsCache.clear();
+
+    // Clear all stored settings in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final keysToRemove = prefs
+        .getKeys()
+        .where((key) => key.startsWith('tilt_settings_'))
+        .toList();
+    for (final key in keysToRemove) {
+      await prefs.remove(key);
+    }
+
+    // Notify listeners to refresh UI
+    notifyListeners();
+  }
+
   void _processScanResults(List<ScanResult> results) async {
     final Map<String, Map<String, dynamic>> updatedBeacons = {};
     final DateTime now = DateTime.now();
@@ -128,15 +147,21 @@ class DataService extends ChangeNotifier {
             await _loadTiltSettings(macAddress);
             final settings = _tiltSettingsCache[macAddress] ?? {};
 
-            // Apply calibration if available
+            // Raw values
             final double gravity = isTiltPro ? minor / 10000.0 : minor / 1000.0;
             final double temperature =
                 isTiltPro ? major / 10.0 : major.toDouble();
-            final double calibratedGravity = gravity +
-                (double.tryParse(settings['calibrationSG'] ?? '0') ?? 0);
-            final double calibratedTemperature = temperature +
-                (double.tryParse(settings['calibrationTemperature'] ?? '0') ??
-                    0);
+
+            // Offsets (calibration - raw)
+            final double gravityOffset =
+                double.tryParse(settings['gravityOffset'] ?? '0.0') ?? 0.0;
+            final double temperatureOffset =
+                double.tryParse(settings['temperatureOffset'] ?? '0.0') ?? 0.0;
+
+            // Calibrated values
+            final double calibratedGravity = gravity + gravityOffset;
+            final double calibratedTemperature =
+                temperature + temperatureOffset;
 
             // Convert calibrated values based on selected units
             final String gravityUnit = settings['gravityUnit'] ?? 'SG';

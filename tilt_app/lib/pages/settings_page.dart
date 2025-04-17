@@ -22,6 +22,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String _gravityUnit = 'SG';
   String _temperatureUnit = 'Fahrenheit';
   final _settingsService = SettingsService();
+  String _gravityOffset = '0.0';
+  String _temperatureOffset = '0.0';
 
   @override
   void initState() {
@@ -44,31 +46,91 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _resetSettings() async {
-    _macAddressController.clear();
+    final macAddress = _macAddressController.text;
+
+    if (macAddress.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No Tilt selected to reset settings.')),
+      );
+      return;
+    }
+
+    // Reset settings for the selected Tilt
+    await widget.dataService.updateTiltSettings(macAddress, {
+      'calibrationSG': '',
+      'calibrationTemperature': '',
+      'gravityUnit': 'SG',
+      'temperatureUnit': 'Fahrenheit',
+      'gravityOffset': '0.0',
+      'temperatureOffset': '0.0',
+    });
+
+    // Clear local fields
     _calibrationSGController.clear();
     _calibrationTemperatureController.clear();
     _gravityUnit = 'SG';
     _temperatureUnit = 'Fahrenheit';
-    await _settingsService.saveSettings({
-      'macAddress': '',
-      'calibrationSG': '',
-      'calibrationTemperature': '',
-      'gravityUnit': _gravityUnit,
-      'temperatureUnit': _temperatureUnit,
-    });
+    _gravityOffset = '0.0';
+    _temperatureOffset = '0.0';
+
     setState(() {});
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings reset to default')),
+      SnackBar(content: Text('Settings reset for Tilt: $macAddress')),
     );
   }
 
   Future<void> _saveTiltSpecificSettings(String macAddress) async {
+    // Retrieve existing settings
+    final existingSettings =
+        await _settingsService.getTiltSettings(macAddress) ?? {};
+
+    // Retrieve raw values from the beacon data
+    final beacons = await widget.dataService.beaconsStream.first;
+    final beacon = beacons.firstWhere(
+      (b) => b['macAddress'] == macAddress,
+      orElse: () => {},
+    );
+
+    if (beacon.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No raw data available for this Tilt.')),
+      );
+      return;
+    }
+
+    final rawGravity = beacon['gravity'] ?? 0.0;
+    final rawTemperature = beacon['temperature'] ?? 0.0;
+
+    // Calculate offsets only if calibration values are provided and updated
+    final calibrationGravity =
+        double.tryParse(_calibrationSGController.text) ?? rawGravity;
+    final calibrationTemperature =
+        double.tryParse(_calibrationTemperatureController.text) ??
+            rawTemperature;
+
+    final gravityOffset = _calibrationSGController.text.isNotEmpty &&
+            existingSettings['calibrationSG'] != _calibrationSGController.text
+        ? calibrationGravity - rawGravity
+        : double.tryParse(existingSettings['gravityOffset'] ?? '0.0') ?? 0.0;
+
+    final temperatureOffset =
+        _calibrationTemperatureController.text.isNotEmpty &&
+                existingSettings['calibrationTemperature'] !=
+                    _calibrationTemperatureController.text
+            ? calibrationTemperature - rawTemperature
+            : double.tryParse(existingSettings['temperatureOffset'] ?? '0.0') ??
+                0.0;
+
     final settings = {
       'calibrationSG': _calibrationSGController.text,
       'calibrationTemperature': _calibrationTemperatureController.text,
       'gravityUnit': _gravityUnit,
       'temperatureUnit': _temperatureUnit,
-    };
+      'gravityOffset': gravityOffset.toStringAsFixed(3),
+      'temperatureOffset': temperatureOffset.toStringAsFixed(1),
+    }.map((key, value) => MapEntry(key, value.toString()));
+
     await widget.dataService.updateTiltSettings(
         macAddress, settings); // Use DataService to update settings
     ScaffoldMessenger.of(context).showSnackBar(
@@ -84,14 +146,18 @@ class _SettingsPageState extends State<SettingsPage> {
           settings['calibrationTemperature'] ?? '';
       _gravityUnit = settings['gravityUnit'] ?? 'SG';
       _temperatureUnit = settings['temperatureUnit'] ?? 'Fahrenheit';
+
+      // Load offsets
+      _gravityOffset = double.tryParse(settings['gravityOffset'] ?? '0.0')
+              ?.toStringAsFixed(3) ??
+          '0.0';
+      _temperatureOffset =
+          double.tryParse(settings['temperatureOffset'] ?? '0.0')
+                  ?.toStringAsFixed(1) ??
+              '0.0';
+
       setState(() {});
     }
-  }
-
-  String _applyCalibration(dynamic value, String calibrationValue) {
-    if (calibrationValue.isEmpty) return value.toString();
-    final calibration = double.tryParse(calibrationValue) ?? 0.0;
-    return (value + calibration).toStringAsFixed(3);
   }
 
   String _formatGravity(dynamic gravity, bool isTiltPro) {
@@ -199,6 +265,17 @@ class _SettingsPageState extends State<SettingsPage> {
                         });
                       },
                     ),
+                    const SizedBox(height: 16),
+                    // Display offsets persistently
+                    Text(
+                      'Gravity Offset: $_gravityOffset',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    Text(
+                      'Temperature Offset: $_temperatureOffset',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () async {
                         await _saveTiltSpecificSettings(
@@ -238,11 +315,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       final beacon = beacons[index];
                       final isTiltPro = beacon['isTiltPro'] ??
                           false; // Ensure isTiltPro is used
-                      final calibratedGravity = _applyCalibration(
-                          beacon['gravity'], _calibrationSGController.text);
-                      final calibratedTemperature = _applyCalibration(
-                          beacon['temperature'],
-                          _calibrationTemperatureController.text);
+
+                      // Use offsets to calculate calibrated values
+                      final calibratedGravity =
+                          (double.tryParse(beacon['gravity'].toString()) ??
+                                  0.0) +
+                              (double.tryParse(_gravityOffset) ?? 0.0);
+                      final calibratedTemperature =
+                          (double.tryParse(beacon['temperature'].toString()) ??
+                                  0.0) +
+                              (double.tryParse(_temperatureOffset) ?? 0.0);
 
                       return ListTile(
                         title: Text(

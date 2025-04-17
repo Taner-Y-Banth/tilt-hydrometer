@@ -96,37 +96,24 @@ class _LoggingPageState extends State<LoggingPage> {
 
         if (samples.isNotEmpty) {
           // Calculate averages
-          final avgGravity = samples
-                  .map((sample) => sample['gravity'] ?? 0.0)
+          final avgCalibratedGravity = samples
+                  .map((sample) => sample['calibratedGravity'] ?? 0.0)
+                  .reduce((a, b) => a + b) /
+              samples.length;
+          final avgCalibratedTemperature = samples
+                  .map((sample) => sample['calibratedTemperature'] ?? 0.0)
                   .reduce((a, b) => a + b) /
               samples.length;
 
           // Update graph data
-          _updateGraphData(avgGravity);
+          _updateGraphData(avgCalibratedGravity);
 
           // Log the averaged data
-          final avgTemperature = samples
-                  .map((sample) => sample['temperature'] ?? 0.0)
-                  .reduce((a, b) => a + b) /
-              samples.length;
-          final avgRssi = samples
-                  .map((sample) => sample['rssi'] ?? 0)
-                  .reduce((a, b) => a + b) /
-              samples.length;
-          final avgDistance = samples
-                  .map((sample) =>
-                      double.tryParse(
-                          sample['distance']?.toString() ?? '0.0') ??
-                      0.0)
-                  .reduce((a, b) => a + b) /
-              samples.length;
-
           _logData.add([
             DateTime.now().toIso8601String(),
-            avgGravity.toStringAsFixed(4),
-            avgTemperature.toStringAsFixed(1),
-            avgRssi.toInt(),
-            avgDistance.toStringAsFixed(2),
+            avgCalibratedGravity.toStringAsFixed(4),
+            avgCalibratedTemperature.toStringAsFixed(1),
+            // ...existing fields...
           ]);
         }
       }

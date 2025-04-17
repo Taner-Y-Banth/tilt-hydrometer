@@ -3,7 +3,7 @@ import 'package:provider/provider.dart'; // Import Provider
 import 'package:tilt_app/services/data_service.dart'; // Import DataService
 
 class DataPage extends StatelessWidget {
-  const DataPage({Key? key}) : super(key: key);
+  const DataPage({super.key});
 
   String _formatGravity(dynamic gravity, bool isTiltPro) {
     final double parsedGravity = gravity is String
@@ -39,6 +39,7 @@ class DataPage extends StatelessWidget {
               final beacon = sortedBeacons[index];
               final String colorName = beacon['color'];
               final Color cardColor = getColorFromName(colorName);
+              final Color textColor = getTextColor(cardColor); // Get text color
               final isTiltPro = beacon['isTiltPro'] ?? false;
 
               return Card(
@@ -49,19 +50,54 @@ class DataPage extends StatelessWidget {
                     isTiltPro
                         ? 'Tilt Pro ${beacon['color']}'
                         : 'Tilt ${beacon['color']}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: textColor, // Apply text color
+                    ),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('MAC Address: ${beacon['macAddress']}'),
-                      Text('UUID: ${beacon['uuid']}'),
                       Text(
-                          'Gravity: ${_formatGravity(beacon['convertedGravity'], isTiltPro)} (${beacon['gravityUnit']})'),
+                        'MAC Address: ${beacon['macAddress']}',
+                        style: TextStyle(color: textColor),
+                      ),
                       Text(
-                          'Temperature: ${beacon['convertedTemperature'].toStringAsFixed(1)} (${beacon['temperatureUnit']})'),
-                      Text('RSSI: ${beacon['rssi']}'),
-                      Text('Distance: ${beacon['distance']} meters'),
+                        'UUID: ${beacon['uuid']}',
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Raw Gravity: ${_formatGravity(beacon['gravity'], isTiltPro)} (SG)', // Always in SG
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Calibrated Gravity: ${_formatGravity(beacon['calibratedGravity'], isTiltPro)} (SG)', // Always in SG
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Converted Gravity: ${_formatGravity(beacon['convertedGravity'], isTiltPro)} (${beacon['gravityUnit']})',
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Raw Temperature: ${beacon['temperature'].toStringAsFixed(1)} (°F)', // Always in °F
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Calibrated Temperature: ${beacon['calibratedTemperature'].toStringAsFixed(1)} (°F)', // Always in °F
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Converted Temperature: ${beacon['convertedTemperature'].toStringAsFixed(1)} (${beacon['temperatureUnit']})',
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'RSSI: ${beacon['rssi']}',
+                        style: TextStyle(color: textColor),
+                      ),
+                      Text(
+                        'Distance: ${beacon['distance']} meters',
+                        style: TextStyle(color: textColor),
+                      ),
                     ],
                   ),
                 ),
@@ -77,24 +113,30 @@ class DataPage extends StatelessWidget {
   Color getColorFromName(String colorName) {
     switch (colorName.toLowerCase()) {
       case 'red':
-        return const Color.fromARGB(251, 255, 106, 138);
+        return const Color(0xFFFF0000); // Pure red based on image analysis
       case 'green':
-        return const Color.fromARGB(255, 93, 179, 95);
+        return const Color(
+            0xFF00CD66); // Medium Spring Green from image analysis
       case 'blue':
-        return Colors.blue.shade100;
+        return const Color(0xFF1E90FF); // Dodger Blue from image analysis
       case 'pink':
-        return const Color.fromARGB(255, 255, 162, 195);
+        return const Color(0xFFFF69B4); // Hot Pink from image analysis
       case 'orange':
-        return const Color.fromARGB(255, 231, 156, 42);
+        return const Color(0xFFFF8C00); // Dark Orange from image analysis
       case 'black':
-        return Colors.grey.shade800;
+        return const Color(0xFF000000); // Pure black
       case 'purple':
-        return const Color.fromARGB(255, 200, 110, 216);
+        return const Color(0xFF9932CC); // Dark Orchid from image analysis
       case 'yellow':
-        return const Color.fromARGB(255, 246, 233, 116);
+        return const Color(0xFFFFFF00); // Pure yellow
       default:
-        return const Color.fromARGB(
-            255, 186, 186, 186); // Default color for unknown beacons
+        return const Color(0xFFBDBDBD); // Light gray for unknown beacons
     }
+  }
+
+  // Helper function to determine text color based on background color brightness
+  Color getTextColor(Color backgroundColor) {
+    final brightness = ThemeData.estimateBrightnessForColor(backgroundColor);
+    return brightness == Brightness.dark ? Colors.white : Colors.black;
   }
 }
