@@ -5,11 +5,11 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
-// Define expected environment variable names (Choose names that make sense for you)
-def keyStoreFileEnv = System.getenv("KEYSTORE_FILE")
-def keyStorePasswordEnv = System.getenv("KEYSTORE_PASS")
-def keyAliasEnv = System.getenv("KEY_ALIAS")
-def keyPasswordEnv = System.getenv("KEY_PASS")
+// Define expected environment variable names (updated to match the script)
+def keyStoreFileEnv = System.getenv("MYAPP_KEYSTORE_FILE")
+def keyStorePasswordEnv = System.getenv("MYAPP_KEYSTORE_PASSWORD")
+def keyAliasEnv = System.getenv("MYAPP_KEY_ALIAS")
+def keyPasswordEnv = System.getenv("MYAPP_KEY_PASSWORD")
 
 // Optional: Check if the essential variables are set, particularly for release builds
 def signingEnvVarsSet = keyStoreFileEnv != null && keyStorePasswordEnv != null && keyAliasEnv != null && keyPasswordEnv != null
@@ -38,8 +38,8 @@ android {
         applicationId = "com.tilthydrometer.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = "4"
-        versionName = "1.0.4"
+        versionCode = "7"
+        versionName = "1.0.7"
     }
 
     signingConfigs {
@@ -49,7 +49,7 @@ android {
                 storeFile file(keyStoreFileEnv) // Read path from env var
                 storePassword keyStorePasswordEnv    // Read password from env var
                 keyAlias keyAliasEnv                 // Read alias from env var
-                keyPassword keyPasswordEnv             // Read key password from env var
+                keyPassword keyPasswordEnv           // Read key password from env var
             }
         }
     }

@@ -3,10 +3,10 @@
 # Define the path to your key.properties file
 PROPERTIES_FILE="C:\Users\Brisingr\Documents\GitHub\tilt-hydrometer\tilt_app\android\key.properties"
 # Define the environment variable names used in build.gradle (UPDATED)
-ENV_VAR_STORE_FILE="KEYSTORE_FILE"
-ENV_VAR_STORE_PASSWORD="KEYSTORE_PASS"
-ENV_VAR_KEY_ALIAS="KEY_ALIAS"
-ENV_VAR_KEY_PASSWORD="KEY_PASS"
+ENV_VAR_STORE_FILE="MYAPP_KEYSTORE_FILE"
+ENV_VAR_STORE_PASSWORD="MYAPP_KEYSTORE_PASS"
+ENV_VAR_KEY_ALIAS="MYAPP_KEY_ALIAS"
+ENV_VAR_KEY_PASSWORD="MYAPP_KEY_PASS"
 
 # Check if the properties file exists
 if [ ! -f "$PROPERTIES_FILE" ]; then
